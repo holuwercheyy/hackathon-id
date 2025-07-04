@@ -2,7 +2,7 @@ export interface SMSMessage {
   to: string
   message: string
   orderId?: string
-  type: "confirmation" | "reminder" | "cancellation"
+  type: "confirmation" | "reminder" | "cancellation" | "friend_confirmation"
 }
 
 export interface SMSResponse {
@@ -12,16 +12,13 @@ export interface SMSResponse {
 }
 
 export class SMSService {
-  // Using a generic SMS API (you can replace with your preferred provider like Twilio, Clickatell, etc.)
   private static readonly SMS_API_URL = process.env.SMS_API_URL || "https://api.sms-provider.com/send"
   private static readonly SMS_API_KEY = process.env.SMS_API_KEY || "your-sms-api-key"
 
   static async sendSMS(smsData: SMSMessage): Promise<SMSResponse> {
     try {
-      // Simulate SMS API call
       console.log("Sending SMS:", smsData)
 
-      // In a real implementation, you would make an HTTP request to your SMS provider
       const response = await fetch(this.SMS_API_URL, {
         method: "POST",
         headers: {
@@ -62,15 +59,20 @@ export class SMSService {
     clientName: string,
     date: string,
     time: string,
-    hairstyle: string,
+    services: string,
     total: number,
+    hasFriendDiscount = false,
+    clientCount = 1,
   ): Promise<SMSResponse> {
-    const message = `Hi ${clientName}! Your StyleBook appointment is confirmed.
-    
+    const discountText = hasFriendDiscount ? "\n🎉 Friend Discount Applied: -10%" : ""
+    const clientText = clientCount > 1 ? ` (${clientCount} people)` : ""
+
+    const message = `Hi ${clientName}! Your StyleBook appointment is confirmed! ✅
+
 Order #: ${orderId}
-Service: ${hairstyle}
+Service${clientText}: ${services}
 Date: ${date}
-Time: ${time}
+Time: ${time}${discountText}
 Total: R${total.toFixed(2)}
 
 We'll send you a reminder 5 minutes before your appointment. See you soon! ✂️
@@ -85,14 +87,45 @@ Reply STOP to opt out.`
     })
   }
 
+  static async sendFriendConfirmation(
+    friendPhone: string,
+    orderId: string,
+    friendName: string,
+    primaryClientName: string,
+    date: string,
+    time: string,
+    service: string,
+    totalForBoth: number,
+  ): Promise<SMSResponse> {
+    const message = `Hi ${friendName}! You're booked with ${primaryClientName} at StyleBook! 🎉
+
+Order #: ${orderId}
+Your Service: ${service}
+Date: ${date}
+Time: ${time}
+Total (both): R${totalForBoth.toFixed(2)}
+Friend Discount: -10% ✨
+
+Thanks for coming together! See you soon! ✂️
+
+StyleBook Salon`
+
+    return this.sendSMS({
+      to: friendPhone,
+      message,
+      orderId,
+      type: "friend_confirmation",
+    })
+  }
+
   static async sendAppointmentReminder(
     clientPhone: string,
     orderId: string,
     clientName: string,
     time: string,
-    hairstyle: string,
+    services: string,
   ): Promise<SMSResponse> {
-    const message = `Hi ${clientName}! Your ${hairstyle} appointment starts in 5 minutes at ${time}.
+    const message = `Hi ${clientName}! Your ${services} appointment starts in 5 minutes at ${time}. ⏰
 
 Order #: ${orderId}
 
@@ -115,7 +148,7 @@ StyleBook Salon`
     date: string,
     time: string,
   ): Promise<SMSResponse> {
-    const message = `Hi ${clientName}, your StyleBook appointment has been cancelled.
+    const message = `Hi ${clientName}, your StyleBook appointment has been cancelled. ❌
 
 Order #: ${orderId}
 Original time: ${date} at ${time}
