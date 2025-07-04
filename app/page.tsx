@@ -402,25 +402,29 @@ export default function ChatBookingSystem() {
   }
 
   const handleTimeSelect = (time: string) => {
-    setBooking((prev) => ({ ...prev, selectedTime: time }))
+    setBooking((prev) => {
+      const next = { ...prev, selectedTime: time }
+      // Add the summary using `next`, not the stale `booking`
+      setTimeout(() => {
+        addBotMessage(
+          "Let me confirm your booking details:",
+          undefined,
+          <BookingSummary booking={next} selectedTime={time} />,
+        )
+      }, 1500)
+
+      setTimeout(() => {
+        addBotMessage("How would you like to pay?", undefined, <PaymentSelector onSelect={handlePaymentSelect} />)
+      }, 2500)
+
+      return next
+    })
     addUserMessage(`${time}`)
     setCurrentStep("payment")
 
     setTimeout(() => {
       addBotMessage(`Great! ${time} is perfect! ⏰`)
     }, 500)
-
-    setTimeout(() => {
-      addBotMessage(
-        "Let me confirm your booking details:",
-        undefined,
-        <BookingSummary booking={booking} selectedTime={time} />,
-      )
-    }, 1500)
-
-    setTimeout(() => {
-      addBotMessage("How would you like to pay?", undefined, <PaymentSelector onSelect={handlePaymentSelect} />)
-    }, 2500)
   }
 
   const handlePaymentSelect = async (method: "ozow" | "cash") => {
@@ -622,8 +626,18 @@ export default function ChatBookingSystem() {
     )
   }
 
-  const BookingSummary = ({ booking, selectedTime }: { booking: BookingData; selectedTime: string }) => {
+  const BookingSummary = ({
+    booking,
+    selectedTime,
+  }: {
+    booking: BookingData
+    selectedTime: string
+  }) => {
     const totals = calculateTotals(booking.clients, booking.hasFriendDiscount)
+
+    // Safely build the date string - fix for date error
+    const dateLabel = booking.selectedDate ? format(booking.selectedDate, "EEEE, MMMM d") : "Date TBD"
+
     return (
       <Card className="p-4 mt-2 bg-blue-50">
         <div className="space-y-2">
@@ -639,10 +653,10 @@ export default function ChatBookingSystem() {
           <hr />
           <div className="text-sm">
             <div>
-              <strong>Date:</strong> {format(booking.selectedDate!, "EEEE, MMMM d")}
+              <strong>Date:</strong> {dateLabel}
             </div>
             <div>
-              <strong>Time:</strong> {selectedTime}
+              <strong>Time:</strong> {selectedTime || "Time TBD"}
             </div>
             {booking.hasFriendDiscount && (
               <div className="text-green-600">
@@ -715,7 +729,14 @@ export default function ChatBookingSystem() {
     </Card>
   )
 
-  const BookingConfirmation = ({ booking }: { booking: BookingData & { orderId: string } }) => {
+  const BookingConfirmation = ({
+    booking,
+  }: {
+    booking: BookingData & { orderId: string }
+  }) => {
+    // Fix for date error - safely handle date formatting
+    const dateLabel = booking.selectedDate ? format(booking.selectedDate, "EEEE, MMMM d") : "Date TBD"
+
     const generateQRCode = () => {
       const qrData = `loyalty:${booking.clients[0].phone}:${Date.now()}`
       return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`
@@ -737,7 +758,7 @@ export default function ChatBookingSystem() {
               </div>
             ))}
             <div>
-              <strong>Date:</strong> {format(booking.selectedDate!, "EEEE, MMMM d")}
+              <strong>Date:</strong> {dateLabel}
             </div>
             <div>
               <strong>Time:</strong> {booking.selectedTime}

@@ -1,9 +1,5 @@
 "use server"
 
-import { format } from "date-fns"
-import { SMSService } from "@/lib/sms-service"
-import { ReminderScheduler } from "@/lib/reminder-scheduler"
-
 export interface BookingClient {
   name: string
   phone: string
@@ -11,7 +7,7 @@ export interface BookingClient {
   price: number
 }
 
-export interface BookingPayload {
+interface CreateBookingParams {
   clients: BookingClient[]
   dateISO: string
   time: string
@@ -22,79 +18,47 @@ export interface BookingPayload {
   total: number
 }
 
-export async function createBooking(payload: BookingPayload) {
-  // Generate order number with timestamp and random component
-  const timestamp = Date.now().toString()
-  const random = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0")
-  const orderId = `SB-${timestamp.slice(-6)}${random}`
+export async function createBooking(params: CreateBookingParams) {
+  // Generate order ID
+  const orderId = `SB-${Date.now()}`
 
-  const appointmentDateTime = new Date(`${payload.dateISO}T${payload.time}:00`)
+  // Simulate booking creation
+  await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  // Send confirmation SMS to primary client
-  const primaryClient = payload.clients[0]
-  await SMSService.sendOrderConfirmation(
-    primaryClient.phone,
-    orderId,
-    primaryClient.name,
-    format(appointmentDateTime, "MMMM d, yyyy"),
-    payload.time,
-    payload.clients.map((c) => c.hairstyle).join(" + "),
-    payload.total,
-    payload.hasFriendDiscount,
-    payload.clients.length,
-  )
+  // Send SMS confirmations
+  try {
+    for (const client of params.clients) {
+      await sendBookingConfirmation({
+        orderId,
+        clientName: client.name,
+        clientPhone: client.phone,
+        hairstyle: client.hairstyle,
+        date: params.dateISO,
+        time: params.time,
+        total: params.total,
+        paymentMethod: params.paymentMethod,
+        hasFriendDiscount: params.hasFriendDiscount,
+      })
+    }
 
-  // Schedule reminder SMS
-  ReminderScheduler.scheduleReminder(
-    orderId,
-    primaryClient.phone,
-    primaryClient.name,
-    appointmentDateTime,
-    payload.clients.map((c) => c.hairstyle).join(" + "),
-  )
-
-  // If there are multiple clients, send SMS to friend too
-  if (payload.clients.length > 1) {
-    const friendClient = payload.clients[1]
-    await SMSService.sendFriendConfirmation(
-      friendClient.phone,
+    // Schedule 5-minute reminders
+    await scheduleReminder({
       orderId,
-      friendClient.name,
-      primaryClient.name,
-      format(appointmentDateTime, "MMMM d, yyyy"),
-      payload.time,
-      friendClient.hairstyle,
-      payload.total,
-    )
+      clients: params.clients,
+      dateISO: params.dateISO,
+      time: params.time,
+    })
+  } catch (error) {
+    console.error("SMS sending failed:", error)
+    // Continue with booking even if SMS fails
   }
 
-  return { orderId, appointmentDateTime: appointmentDateTime.toISOString() }
+  return { orderId }
 }
 
-// Get real available time slots for a specific date
 export async function getAvailableTimeSlots(dateISO: string) {
-  // In a real implementation, this would check your booking database
-  // For now, we'll simulate some booked slots based on the date
-  const date = new Date(dateISO)
-  const dayOfWeek = date.getDay()
-
-  // Simulate different booking patterns for different days
-  let bookedSlots: string[] = []
-
-  if (dayOfWeek === 1) {
-    // Monday
-    bookedSlots = ["09:00", "11:30", "14:00", "16:00"]
-  } else if (dayOfWeek === 5) {
-    // Friday
-    bookedSlots = ["10:00", "12:00", "13:30", "15:00", "16:30"]
-  } else if (dayOfWeek === 6) {
-    // Saturday
-    bookedSlots = ["08:30", "09:30", "11:00", "12:30", "14:30", "15:30"]
-  } else {
-    bookedSlots = ["09:30", "13:00", "15:30"]
-  }
+  // Simulate API call
+  await new Promise((resolve) => setTimeout(resolve, 500))
 
   const allSlots = [
     "08:00",
@@ -117,8 +81,49 @@ export async function getAvailableTimeSlots(dateISO: string) {
     "16:30",
   ]
 
+  // Simulate some booked slots based on date
+  const bookedSlots = dateISO.includes("2024-01-15") ? ["09:00", "11:30", "14:00"] : ["10:00", "13:30"]
+
+  const available = allSlots.filter((slot) => !bookedSlots.includes(slot))
+
   return {
-    available: allSlots.filter((slot) => !bookedSlots.includes(slot)),
+    available,
     booked: bookedSlots,
   }
+}
+
+async function sendBookingConfirmation(params: {
+  orderId: string
+  clientName: string
+  clientPhone: string
+  hairstyle: string
+  date: string
+  time: string
+  total: number
+  paymentMethod: string
+  hasFriendDiscount: boolean
+}) {
+  const message = `Hi ${params.clientName}! Your StyleBook appointment is confirmed.
+
+Order #: ${params.orderId}
+Service: ${params.hairstyle}
+Date: ${params.date}
+Time: ${params.time}
+Total: R${params.total.toFixed(2)}
+${params.hasFriendDiscount ? "Friend Discount Applied: -10%" : ""}
+
+We'll send you a reminder 5 minutes before your appointment. See you soon! ✂️`
+
+  // Mock SMS sending
+  console.log("SMS sent to", params.clientPhone, ":", message)
+}
+
+async function scheduleReminder(params: {
+  orderId: string
+  clients: BookingClient[]
+  dateISO: string
+  time: string
+}) {
+  // Mock reminder scheduling
+  console.log("Reminder scheduled for order:", params.orderId)
 }
