@@ -201,6 +201,18 @@ async function sendEmailReport(params: {
   csvContent: string
   date: string
 }) {
+  // Check if SMTP is configured
+  const smtpConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+
+  if (!smtpConfigured) {
+    console.log("📧 DEMO EMAIL (SMTP not configured):")
+    console.log(`To: ${params.to}`)
+    console.log(`Subject: ${params.subject}`)
+    console.log(`CSV attachment: daily-report-${params.date}.csv`)
+    console.log("Configure SMTP environment variables to send real emails")
+    return
+  }
+
   // Mock email sending - in production, use SendGrid, Nodemailer, etc.
   console.log(`📧 Email sent to: ${params.to}`)
   console.log(`📧 Subject: ${params.subject}`)

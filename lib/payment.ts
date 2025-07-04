@@ -7,9 +7,18 @@ export interface OzowPaymentData {
 }
 
 export class PaymentService {
+  private static readonly OZOW_SITE_CODE = process.env.OZOW_SITE_CODE || "DEMO_SITE"
+  private static readonly OZOW_API_KEY = process.env.OZOW_API_KEY || "demo-key"
+
   static async initiateOzowPayment(paymentData: OzowPaymentData): Promise<string> {
+    // For development/demo purposes
+    if (this.OZOW_API_KEY === "demo-key" || !process.env.OZOW_API_KEY) {
+      console.log("💳 DEMO PAYMENT (would redirect to Ozow in production):", paymentData)
+      return `https://demo-payment.com/pay?amount=${paymentData.amount}&ref=${paymentData.reference}`
+    }
+
     // Simulate Ozow payment initiation
-    const paymentUrl = `https://pay.ozow.com/payment?amount=${paymentData.amount}&reference=${paymentData.reference}&name=${encodeURIComponent(paymentData.clientName)}&phone=${paymentData.clientPhone}`
+    const paymentUrl = `https://pay.ozow.com/payment?amount=${paymentData.amount}&reference=${paymentData.reference}&name=${encodeURIComponent(paymentData.clientName)}&phone=${paymentData.clientPhone}&siteCode=${this.OZOW_SITE_CODE}`
 
     console.log("Initiating Ozow payment:", paymentData)
 

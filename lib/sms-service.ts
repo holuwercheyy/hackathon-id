@@ -13,11 +13,20 @@ export interface SMSResponse {
 
 export class SMSService {
   // Using a generic SMS API (you can replace with your preferred provider like Twilio, Clickatell, etc.)
-  private static readonly SMS_API_URL = process.env.SMS_API_URL || "https://api.sms-provider.com/send"
-  private static readonly SMS_API_KEY = process.env.SMS_API_KEY || "your-sms-api-key"
+  private static readonly SMS_API_URL = process.env.SMS_API_URL || "https://api.demo-sms.com/send"
+  private static readonly SMS_API_KEY = process.env.SMS_API_KEY || "demo-key"
 
   static async sendSMS(smsData: SMSMessage): Promise<SMSResponse> {
     try {
+      // For development/demo purposes, simulate SMS sending
+      if (this.SMS_API_KEY === "demo-key" || !process.env.SMS_API_KEY) {
+        console.log("📱 DEMO SMS (would be sent in production):", smsData)
+        return {
+          success: true,
+          messageId: `demo_msg_${Date.now()}`,
+        }
+      }
+
       // Simulate SMS API call
       console.log("Sending SMS:", smsData)
 
@@ -31,7 +40,7 @@ export class SMSService {
         body: JSON.stringify({
           to: smsData.to,
           message: smsData.message,
-          from: "StyleBook",
+          from: process.env.NEXT_PUBLIC_SALON_NAME || "StyleBook",
         }),
       })
 
