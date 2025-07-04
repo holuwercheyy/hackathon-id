@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
-import { Scissors, Send, Bot, User, CreditCard, Smartphone, QrCode, Gift, AlertCircle } from "lucide-react"
+import { Scissors, Send, Bot, User, QrCode, Gift, Clock } from "lucide-react"
 import { format } from "date-fns"
-import { createBooking, getAvailableTimeSlots, type BookingClient } from "@/app/actions/create-booking"
+import { createBooking, getAvailableTimeSlots, sendDailyReport, type BookingClient } from "@/app/actions/create-booking"
 
 interface Message {
   id: string
@@ -132,6 +132,21 @@ export default function ChatBookingSystem() {
     const discount = hasFriendDiscount ? subtotal * 0.1 : 0
     const total = subtotal - discount
     return { subtotal, discount, total }
+  }
+
+  const calculateArrivalTime = (appointmentTime: string) => {
+    const [hours, minutes] = appointmentTime.split(":").map(Number)
+    const appointmentDate = new Date()
+    appointmentDate.setHours(hours, minutes, 0, 0)
+
+    // Subtract 30 minutes
+    const arrivalDate = new Date(appointmentDate.getTime() - 30 * 60 * 1000)
+
+    return arrivalDate.toLocaleTimeString("en-ZA", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
   }
 
   const processUserInput = (input: string) => {
@@ -314,11 +329,84 @@ export default function ChatBookingSystem() {
         }
         break
 
+      case "final":
+        // Handle post-booking interactions
+        if (lowerInput.includes("book") || lowerInput.includes("appointment")) {
+          // Reset everything for new booking
+          resetBookingState()
+          setCurrentStep("name")
+          setTimeout(() => {
+            addBotMessage("Great! Let's book another appointment! 🎉 What's your name?")
+          }, 500)
+        } else if (lowerInput.includes("update") || lowerInput.includes("modify")) {
+          setTimeout(() => {
+            addBotMessage(
+              "To update your booking, please call us at (011) 123-4567 or visit the salon. Our team will be happy to help! 📞",
+            )
+          }, 500)
+        } else if (lowerInput.includes("thanks") || lowerInput.includes("bye")) {
+          setTimeout(() => {
+            addBotMessage("You're welcome! Thanks for choosing StyleBook! See you soon! 👋✂️")
+          }, 500)
+        } else {
+          // Default responses for final step
+          setTimeout(() => {
+            addBotMessage("I can help you with:", [
+              "Book another appointment 📅",
+              "Update my booking 📝",
+              "Contact information 📞",
+              "That's all, thanks! 👋",
+            ])
+          }, 500)
+        }
+        break
+
       default:
-        setTimeout(() => {
-          addBotMessage("I'm not sure I understand 🤔 Could you try again?")
-        }, 500)
+        // More helpful default response
+        if (lowerInput.includes("book") || lowerInput.includes("appointment")) {
+          resetBookingState()
+          setCurrentStep("name")
+          setTimeout(() => {
+            addBotMessage("Perfect! Let's get you booked! What's your name? 😊")
+          }, 500)
+        } else if (lowerInput.includes("service") || lowerInput.includes("price")) {
+          showServices()
+        } else if (lowerInput.includes("help")) {
+          setTimeout(() => {
+            addBotMessage("I'm here to help! I can assist you with:", [
+              "Book an appointment 📅",
+              "View our services 💇‍♂️",
+              "Contact information 📞",
+              "Start over 🔄",
+            ])
+          }, 500)
+        } else {
+          setTimeout(() => {
+            addBotMessage("I can help you with booking appointments! Would you like to:", [
+              "Book an appointment 📅",
+              "See our services 💇‍♂️",
+              "Get help 💭",
+            ])
+          }, 500)
+        }
     }
+  }
+
+  // Add this function to reset booking state
+  const resetBookingState = () => {
+    setBooking({
+      clients: [{ name: "", phone: "", hairstyle: "", price: 0 }],
+      selectedDate: null,
+      selectedTime: "",
+      paymentMethod: null,
+      hasFriendDiscount: false,
+      subtotal: 0,
+      discount: 0,
+      total: 0,
+    })
+    setCurrentClientIndex(0)
+    setAvailableSlots([])
+    setBookedSlots([])
   }
 
   const showServices = () => {
@@ -403,98 +491,166 @@ export default function ChatBookingSystem() {
 
   const handleTimeSelect = (time: string) => {
     setBooking((prev) => {
-      const next = { ...prev, selectedTime: time }
-      // Add the summary using `next`, not the stale `booking`
+      const next = { ...prev, selectedTime: time, paymentMethod: "cash" }
+
+      // Show booking summary first
       setTimeout(() => {
         addBotMessage(
-          "Let me confirm your booking details:",
+          "Perfect! Let me confirm your booking details:",
           undefined,
           <BookingSummary booking={next} selectedTime={time} />,
         )
       }, 1500)
 
+      // Then proceed directly to booking creation
       setTimeout(() => {
-        addBotMessage("How would you like to pay?", undefined, <PaymentSelector onSelect={handlePaymentSelect} />)
-      }, 2500)
+        createBookingDirectly(next)
+      }, 3000)
 
       return next
     })
     addUserMessage(`${time}`)
-    setCurrentStep("payment")
+    setCurrentStep("confirming")
 
     setTimeout(() => {
       addBotMessage(`Great! ${time} is perfect! ⏰`)
     }, 500)
   }
 
-  const handlePaymentSelect = async (method: "ozow" | "cash") => {
-    setBooking((prev) => ({ ...prev, paymentMethod: method }))
-
-    if (method === "cash") {
-      addUserMessage("💵 Pay cash at salon")
-      setTimeout(() => {
-        addBotMessage(
-          "⚠️ Please note: Our cash payment system is currently offline. However, I can still create your booking and you can pay when you arrive! 💵",
-        )
-      }, 500)
-    } else {
-      addUserMessage("💳 Pay with Ozow")
-      setTimeout(() => {
-        addBotMessage("Great choice! Ozow is secure and convenient! 🔒")
-      }, 500)
+  const createBookingDirectly = async (bookingData: BookingData) => {
+    // Guard – prevent calling createBooking without date / time.
+    if (!bookingData.selectedDate || !bookingData.selectedTime) {
+      addBotMessage("Something went wrong with your booking details. Please try again. 🗓️⏰")
+      return
     }
 
-    setTimeout(() => {
-      addBotMessage("Processing your booking... ⚡")
-    }, 1000)
+    setTimeout(() => addBotMessage("Creating your booking... ⚡"), 500)
 
     try {
-      const totals = calculateTotals(booking.clients, booking.hasFriendDiscount)
+      const totals = calculateTotals(bookingData.clients, bookingData.hasFriendDiscount)
+
       const result = await createBooking({
-        clients: booking.clients,
-        dateISO: booking.selectedDate!.toISOString().split("T")[0],
-        time: booking.selectedTime,
-        paymentMethod: method,
-        hasFriendDiscount: booking.hasFriendDiscount,
+        clients: bookingData.clients,
+        dateISO: bookingData.selectedDate.toISOString().split("T")[0],
+        time: bookingData.selectedTime,
+        paymentMethod: "cash",
+        hasFriendDiscount: bookingData.hasFriendDiscount,
         ...totals,
       })
 
-      setBooking((prev) => ({ ...prev, orderId: result.orderId, ...totals }))
+      // Persist order-id & totals
+      setBooking((prev) => ({ ...prev, ...totals, orderId: result.orderId }))
 
-      setTimeout(() => {
-        addBotMessage("🎉 BOOKING CONFIRMED! 🎉")
-      }, 2000)
+      setTimeout(() => addBotMessage("🎉 BOOKING CONFIRMED! 🎉"), 1500)
 
       setTimeout(() => {
         addBotMessage(
-          `Your order number is: ${result.orderId} ✅\n\nI've sent confirmation SMS${booking.clients.length > 1 ? "es" : ""} with all the details! 📱\n\nYou'll get a reminder 5 minutes before your appointment! ⏰`,
-          undefined,
-          <BookingConfirmation booking={{ ...booking, orderId: result.orderId, ...totals }} />,
-        )
-      }, 3000)
+          `Your order number is: ${result.orderId} ✅
 
-      if (method === "ozow") {
-        setTimeout(() => {
-          addBotMessage(
-            "For Ozow payment, you'll be redirected to complete the transaction:",
-            undefined,
-            <OzowPaymentLink orderId={result.orderId} amount={totals.total} />,
-          )
-        }, 4000)
-      }
+💵 Please pay cash when you arrive at the salon.
+
+I've sent confirmation SMS${bookingData.clients.length > 1 ? "es" : ""} with all the details! 📱
+
+You'll get a reminder 5 minutes before your appointment! ⏰`,
+          undefined,
+          <BookingConfirmation booking={{ ...bookingData, ...totals, orderId: result.orderId }} />,
+        )
+      }, 2500)
 
       setTimeout(() => {
-        addBotMessage("Is there anything else I can help you with today? 😊", [
+        const arrivalTime = calculateArrivalTime(bookingData.selectedTime)
+        addBotMessage(
+          `📋 **ORDER SUMMARY**
+
+⏰ **IMPORTANT:** Please arrive 30 minutes early at ${arrivalTime}`,
+          undefined,
+          <OrderSummary booking={{ ...bookingData, ...totals, orderId: result.orderId }} arrivalTime={arrivalTime} />,
+        )
+      }, 3500)
+
+      setTimeout(async () => {
+        try {
+          await sendDailyReport(bookingData.selectedDate.toISOString().split("T")[0])
+          addBotMessage("📊 Daily report sent to salon management! 📈")
+        } catch (err) {
+          console.error("Daily-report error:", err)
+        }
+      }, 4500)
+
+      setTimeout(() => {
+        addBotMessage("Anything else I can help with? 😊", [
           "Book another appointment 📅",
           "Update my booking 📝",
           "That's all, thanks! 👋",
         ])
-      }, 5000)
-    } catch (error) {
-      setTimeout(() => {
-        addBotMessage("Oops! Something went wrong 😅 Let me try that again...")
-      }, 2000)
+        setCurrentStep("final") // Add this line
+      }, 5500)
+    } catch (err) {
+      console.error("Booking error:", err)
+      addBotMessage("Oops! Something went wrong while creating your booking 😅. Please try again.")
     }
+  }
+
+  const BookingConfirmation = ({
+    booking,
+  }: {
+    booking: BookingData & { orderId: string }
+  }) => {
+    // Fix for date error - safely handle date formatting
+    const dateLabel = booking.selectedDate ? format(booking.selectedDate, "EEEE, MMMM d") : "Date TBD"
+
+    const generateQRCode = () => {
+      const qrData = `loyalty:${booking.clients[0].phone}:${Date.now()}`
+      return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`
+    }
+
+    return (
+      <Card className="p-4 mt-2 bg-gradient-to-r from-green-50 to-blue-50">
+        <div className="text-center space-y-3">
+          <div className="text-2xl">🎉</div>
+          <div className="font-semibold">Booking Confirmed!</div>
+
+          <div className="text-sm space-y-1 text-left bg-white p-3 rounded">
+            <div>
+              <strong>Order #:</strong> {booking.orderId}
+            </div>
+            {booking.clients.map((client, index) => (
+              <div key={index}>
+                <strong>{index === 0 ? "Primary" : "Friend"}:</strong> {client.name} - {client.hairstyle}
+              </div>
+            ))}
+            <div>
+              <strong>Date:</strong> {dateLabel}
+            </div>
+            <div>
+              <strong>Time:</strong> {booking.selectedTime}
+            </div>
+            {booking.hasFriendDiscount && (
+              <div className="text-green-600">
+                <strong>Friend Discount:</strong> -10%
+              </div>
+            )}
+            <div>
+              <strong>Total:</strong> R{booking.total.toFixed(2)}
+            </div>
+            <div className="bg-yellow-50 p-2 rounded mt-2">
+              <strong>💵 Payment:</strong> Pay cash when you arrive at the salon
+            </div>
+          </div>
+
+          <div className="text-center">
+            <QrCode className="mx-auto h-6 w-6 mb-2" />
+            <div className="text-sm font-semibold">Your Loyalty QR Code</div>
+            <img
+              src={generateQRCode() || "/placeholder.svg"}
+              alt="Loyalty QR Code"
+              className="mx-auto mt-2 w-24 h-24"
+            />
+            <div className="text-xs text-gray-600 mt-1">Show this at the salon for loyalty points!</div>
+          </div>
+        </div>
+      </Card>
+    )
   }
 
   // Component definitions
@@ -672,119 +828,36 @@ export default function ChatBookingSystem() {
     )
   }
 
-  const PaymentSelector = ({ onSelect }: { onSelect: (method: "ozow" | "cash") => void }) => (
-    <div className="space-y-2 mt-2">
-      <Button
-        variant="outline"
-        onClick={() => onSelect("ozow")}
-        className="w-full h-auto p-4 text-left bg-white hover:bg-blue-50"
-      >
-        <div className="flex items-center">
-          <CreditCard className="mr-3 h-6 w-6" />
-          <div>
-            <div className="font-semibold">💳 Pay with Ozow</div>
-            <div className="text-sm text-gray-600">Secure online payment - Available ✅</div>
-          </div>
-        </div>
-      </Button>
-
-      <Button
-        variant="outline"
-        onClick={() => onSelect("cash")}
-        className="w-full h-auto p-4 text-left bg-white hover:bg-orange-50 border-orange-200"
-      >
-        <div className="flex items-center">
-          <div className="flex items-center mr-3">
-            <Smartphone className="h-6 w-6" />
-            <AlertCircle className="h-4 w-4 text-orange-500 ml-1" />
-          </div>
-          <div>
-            <div className="font-semibold">💵 Pay cash at salon</div>
-            <div className="text-sm text-orange-600">System offline - Pay on arrival</div>
-          </div>
-        </div>
-      </Button>
-    </div>
-  )
-
-  const OzowPaymentLink = ({ orderId, amount }: { orderId: string; amount: number }) => (
-    <Card className="p-4 mt-2 bg-gradient-to-r from-blue-50 to-green-50">
-      <div className="text-center space-y-3">
-        <div className="font-semibold">Complete Your Payment</div>
-        <div className="text-sm text-gray-600">
-          Order: {orderId} | Amount: R{amount.toFixed(2)}
-        </div>
-        <Button
-          className="w-full bg-blue-600 hover:bg-blue-700"
-          onClick={() => {
-            // In a real implementation, redirect to Ozow payment gateway
-            window.open(`https://pay.ozow.com/payment?amount=${amount}&reference=${orderId}`, "_blank")
-          }}
-        >
-          <CreditCard className="mr-2 h-4 w-4" />
-          Pay with Ozow
-        </Button>
-        <div className="text-xs text-gray-500">You'll be redirected to Ozow's secure payment page</div>
-      </div>
-    </Card>
-  )
-
-  const BookingConfirmation = ({
+  const OrderSummary = ({
     booking,
-  }: {
-    booking: BookingData & { orderId: string }
-  }) => {
-    // Fix for date error - safely handle date formatting
+    arrivalTime,
+  }: { booking: BookingData & { orderId: string }; arrivalTime: string }) => {
     const dateLabel = booking.selectedDate ? format(booking.selectedDate, "EEEE, MMMM d") : "Date TBD"
 
-    const generateQRCode = () => {
-      const qrData = `loyalty:${booking.clients[0].phone}:${Date.now()}`
-      return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`
-    }
-
     return (
-      <Card className="p-4 mt-2 bg-gradient-to-r from-green-50 to-blue-50">
-        <div className="text-center space-y-3">
-          <div className="text-2xl">🎉</div>
-          <div className="font-semibold">Booking Confirmed!</div>
+      <Card className="p-4 mt-2 bg-gradient-to-r from-yellow-50 to-orange-50 border-orange-200">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 font-semibold text-orange-800">
+            <Clock className="h-5 w-5" />
+            Arrival Instructions
+          </div>
 
-          <div className="text-sm space-y-1 text-left bg-white p-3 rounded">
-            <div>
-              <strong>Order #:</strong> {booking.orderId}
+          <div className="bg-white p-3 rounded-lg space-y-2">
+            <div className="text-sm">
+              <div className="font-semibold text-orange-700">📍 Please arrive at: {arrivalTime}</div>
+              <div className="text-gray-600">Your appointment: {booking.selectedTime}</div>
+              <div className="text-gray-600">Date: {dateLabel}</div>
             </div>
-            {booking.clients.map((client, index) => (
-              <div key={index}>
-                <strong>{index === 0 ? "Primary" : "Friend"}:</strong> {client.name} - {client.hairstyle}
-              </div>
-            ))}
-            <div>
-              <strong>Date:</strong> {dateLabel}
-            </div>
-            <div>
-              <strong>Time:</strong> {booking.selectedTime}
-            </div>
-            {booking.hasFriendDiscount && (
-              <div className="text-green-600">
-                <strong>Friend Discount:</strong> -10%
-              </div>
-            )}
-            <div>
-              <strong>Total:</strong> R{booking.total.toFixed(2)}
-            </div>
-            <div>
-              <strong>Payment:</strong> {booking.paymentMethod === "ozow" ? "Ozow" : "Cash at salon"}
+
+            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+              💡 Arriving 30 minutes early allows us to: • Prepare your station • Review your preferences • Ensure the
+              best experience
             </div>
           </div>
 
           <div className="text-center">
-            <QrCode className="mx-auto h-6 w-6 mb-2" />
-            <div className="text-sm font-semibold">Your Loyalty QR Code</div>
-            <img
-              src={generateQRCode() || "/placeholder.svg"}
-              alt="Loyalty QR Code"
-              className="mx-auto mt-2 w-24 h-24"
-            />
-            <div className="text-xs text-gray-600 mt-1">Show this at the salon for loyalty points!</div>
+            <div className="text-sm font-medium">Order #{booking.orderId}</div>
+            <div className="text-xs text-gray-600">Total: R{booking.total.toFixed(2)}</div>
           </div>
         </div>
       </Card>
@@ -816,9 +889,9 @@ export default function ChatBookingSystem() {
             <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`flex gap-2 max-w-[80%] ${message.type === "user" ? "flex-row-reverse" : ""}`}>
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  className={`w-8 h-8 rounded-full ${
                     message.type === "user" ? "bg-blue-600" : "bg-gray-200"
-                  }`}
+                  } flex items-center justify-center flex-shrink-0`}
                 >
                   {message.type === "user" ? (
                     <User className="h-4 w-4 text-white" />

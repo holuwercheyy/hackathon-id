@@ -18,9 +18,41 @@ interface CreateBookingParams {
   total: number
 }
 
+interface DailyOrderData {
+  orderId: string
+  clientName: string
+  clientPhone: string
+  hairstyle: string
+  date: string
+  time: string
+  total: number
+  paymentMethod: string
+  hasFriendDiscount: boolean
+  timestamp: string
+}
+
+// In-memory storage for demo (in production, use a database)
+const dailyOrders: DailyOrderData[] = []
+
 export async function createBooking(params: CreateBookingParams) {
   // Generate order ID
   const orderId = `SB-${Date.now()}`
+
+  // Store order data for daily report
+  const orderData: DailyOrderData = {
+    orderId,
+    clientName: params.clients[0].name,
+    clientPhone: params.clients[0].phone,
+    hairstyle: params.clients.map((c) => c.hairstyle).join(", "),
+    date: params.dateISO,
+    time: params.time,
+    total: params.total,
+    paymentMethod: params.paymentMethod,
+    hasFriendDiscount: params.hasFriendDiscount,
+    timestamp: new Date().toISOString(),
+  }
+
+  dailyOrders.push(orderData)
 
   // Simulate booking creation
   await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -92,6 +124,92 @@ export async function getAvailableTimeSlots(dateISO: string) {
   }
 }
 
+export async function sendDailyReport(dateISO: string) {
+  // Filter orders for the specific date
+  const dayOrders = dailyOrders.filter((order) => order.date === dateISO)
+
+  if (dayOrders.length === 0) {
+    console.log("No orders for", dateISO)
+    return
+  }
+
+  // Calculate daily statistics
+  const totalRevenue = dayOrders.reduce((sum, order) => sum + order.total, 0)
+  const totalOrders = dayOrders.length
+  const friendDiscountOrders = dayOrders.filter((order) => order.hasFriendDiscount).length
+  const ozowPayments = dayOrders.filter((order) => order.paymentMethod === "ozow").length
+  const cashPayments = dayOrders.filter((order) => order.paymentMethod === "cash").length
+
+  // Create CSV content
+  const csvHeader = "Order ID,Client Name,Phone,Service,Date,Time,Total,Payment Method,Friend Discount,Timestamp\n"
+  const csvRows = dayOrders
+    .map(
+      (order) =>
+        `${order.orderId},${order.clientName},${order.clientPhone},"${order.hairstyle}",${order.date},${order.time},${order.total},${order.paymentMethod},${order.hasFriendDiscount},${order.timestamp}`,
+    )
+    .join("\n")
+
+  const csvContent = csvHeader + csvRows
+
+  // Create summary
+  const summary = `
+STYLEBOOK DAILY REPORT - ${dateISO}
+=====================================
+
+📊 SUMMARY:
+• Total Orders: ${totalOrders}
+• Total Revenue: R${totalRevenue.toFixed(2)}
+• Friend Discounts: ${friendDiscountOrders} orders
+• Ozow Payments: ${ozowPayments}
+• Cash Payments: ${cashPayments}
+
+📈 PERFORMANCE:
+• Average Order Value: R${(totalRevenue / totalOrders).toFixed(2)}
+• Friend Discount Rate: ${((friendDiscountOrders / totalOrders) * 100).toFixed(1)}%
+• Digital Payment Rate: ${((ozowPayments / totalOrders) * 100).toFixed(1)}%
+
+Generated: ${new Date().toLocaleString("en-ZA")}
+  `
+
+  // In a real implementation, you would:
+  // 1. Send email with CSV attachment to salon owner
+  // 2. Upload to cloud storage (Google Drive, Dropbox, etc.)
+  // 3. Send via WhatsApp Business API
+  // 4. Store in database for historical tracking
+
+  console.log("📧 DAILY REPORT SENT TO SALON OWNER:")
+  console.log(summary)
+  console.log("\n📋 CSV DATA:")
+  console.log(csvContent)
+
+  // Simulate email sending
+  await sendEmailReport({
+    to: "owner@stylebook.co.za",
+    subject: `StyleBook Daily Report - ${dateISO}`,
+    summary,
+    csvContent,
+    date: dateISO,
+  })
+
+  return { success: true, ordersCount: totalOrders, revenue: totalRevenue }
+}
+
+async function sendEmailReport(params: {
+  to: string
+  subject: string
+  summary: string
+  csvContent: string
+  date: string
+}) {
+  // Mock email sending - in production, use SendGrid, Nodemailer, etc.
+  console.log(`📧 Email sent to: ${params.to}`)
+  console.log(`📧 Subject: ${params.subject}`)
+  console.log(`📧 CSV attachment: daily-report-${params.date}.csv`)
+
+  // Simulate email API call
+  await new Promise((resolve) => setTimeout(resolve, 500))
+}
+
 async function sendBookingConfirmation(params: {
   orderId: string
   clientName: string
@@ -103,6 +221,17 @@ async function sendBookingConfirmation(params: {
   paymentMethod: string
   hasFriendDiscount: boolean
 }) {
+  // Calculate arrival time (30 minutes before appointment)
+  const [hours, minutes] = params.time.split(":").map(Number)
+  const appointmentDate = new Date()
+  appointmentDate.setHours(hours, minutes, 0, 0)
+  const arrivalDate = new Date(appointmentDate.getTime() - 30 * 60 * 1000)
+  const arrivalTime = arrivalDate.toLocaleTimeString("en-ZA", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+
   const message = `Hi ${params.clientName}! Your StyleBook appointment is confirmed.
 
 Order #: ${params.orderId}
@@ -111,6 +240,8 @@ Date: ${params.date}
 Time: ${params.time}
 Total: R${params.total.toFixed(2)}
 ${params.hasFriendDiscount ? "Friend Discount Applied: -10%" : ""}
+
+⏰ IMPORTANT: Please arrive at ${arrivalTime} (30 minutes early)
 
 We'll send you a reminder 5 minutes before your appointment. See you soon! ✂️`
 
