@@ -183,6 +183,13 @@ For issues and questions:
 3. Test SMS/email services independently
 4. Review the admin dashboard for booking status
 
+## Contributors
+- [Brian Ouko](https://github.com/WellBrian)
+- [Mmabath Naseba](https://github.com/Mmabatho)
+- [Hisserhah Holuwercheyy](https://github.com/holuwercheyy)
+- [Letshego Sephiri](https://github.com/CaramelF)
+- [Christopher Obegi](https://github.com/mechriz)
+
 ## License
 
 MIT License - see LICENSE file
