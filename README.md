@@ -186,8 +186,7 @@ For issues and questions:
 ## Contributors
 - [Brian Ouko](https://github.com/WellBrian)
 - [Mmabath Naseba](https://github.com/Mmabatho)
-- [Holuwercheyy Hisserhah]
-- (https://github.com/holuwercheyy)
+- [Holuwercheyy Hisserhah](https://github.com/holuwercheyy)
 - [Letshego Sephiri](https://github.com/CaramelF)
 - [Christopher Obegi](https://github.com/mechriz)
 
